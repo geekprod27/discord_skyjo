@@ -1,0 +1,4 @@
+services:
+  app:
+    image: ghcr.io/geekprod27/discord_skyjo/docker_image:main
+    restart: always
