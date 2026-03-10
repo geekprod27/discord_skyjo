@@ -61,25 +61,27 @@ class Game:
 
     async def start_game(self):
         for user in self.game:
+            view = ButtonView(self.game[user], True, False, user)
+            message = await self.channel.send(content=f"<@{user}> choisissez votre 1ere carte", view=view)
             while True:
-                view = ButtonView(self.game[user], True, False, user)
-                message = await self.channel.send(content=f"<@{user}> choisissez votre 1ere carte", view=view)
                 await view.wait()
 
                 if view.value:
                     self.game[user][view.y][view.x].visible = True
                     break
-                message.delete()
-
-            while True:
                 view = ButtonView(self.game[user], True, False, user)
-                message = await self.channel.send(content=f"<@{user}> choisissez votre 2eme carte", view=view)
+                await message.edit(view=view)
+
+            view = ButtonView(self.game[user], True, False, user)
+            message = await self.channel.send(content=f"<@{user}> choisissez votre 2eme carte", view=view)
+            while True:
                 await view.wait()
 
                 if view.value:
                     self.game[user][view.y][view.x].visible = True
                     break
-                message.delete()
+                view = ButtonView(self.game[user], True, False, user)
+                await message.edit(view=view)
 
         self.order = []
         self.order.append(self.get_max_player())
@@ -88,57 +90,65 @@ class Game:
                 self.order.append(user)
         await self.boucle_game()
 
+    async def draw_message(self, user):
+        view = PiocheView(self.defausse, user)
+        message = await self.channel.send(content=f"<@{user}> piochez ou choisissez la carte en defausse\n{self.show_game(user)}", view=view)
+        while True:
+            await view.wait()
+
+            if view.value:
+                if view.tag == "pioche":
+                    return self.cartes.pop(0), False
+                if view.tag == "defausse":
+                    return self.defausse, True
+            
+            view = PiocheView(self.defausse, user)
+            await message.edit(view=view)
+
+    async def exenge_revele_card(self, user, defausse_actived: bool, carte_piocher: int):
+        view = ButtonView(self.game[user], False, not defausse_actived, user)
+        message = await self.channel.send(content=f"<@{user}> oû souhaitez vous mettre cette carte {carte_piocher} ?", view=view)
+        while True:
+            await view.wait()
+
+            if view.value:
+                if view.defausse:
+                    self.defausse = carte_piocher
+                    view_revele = ButtonView(self.game[user], True, False, user)
+                    message_revele = await self.channel.send(content=f"<@{user}> choisissez la carte a retourner", view=view_revele)
+                    while True:
+                        await view_revele.wait()
+
+                        if view_revele.value:
+                            self.game[user][view_revele.y][view_revele.x].visible = True
+                            break
+                        view_revele = ButtonView(self.game[user], True, False, user)
+                        await message_revele.edit(view=view_revele)
+                    break
+                else:
+                    self.game[user][view.y][view.x].visible = True
+                    self.defausse = self.game[user][view.y][view.x].valeur
+                    self.game[user][view.y][view.x].valeur = carte_piocher
+                    break
+            view = ButtonView(self.game[user], False, not defausse_actived, user)
+            await message.edit(view=view)
+
+    async def player_turn(self, user):
+        carte_piocher, defausse_actived = await self.draw_message(user)
+        await self.exenge_revele_card(user, defausse_actived, carte_piocher)
+        self.check_colone(user)
+        await self.channel.send(content=f"<@{user}>\n{self.show_game(user)}", delete_after=60)
+        if self.lastturn is None and self.check_if_last(user):
+            self.lastturn = user
+            await self.channel.send(content=f"# <@{user}> a revelé sa derniere carte le dernier tour commence !")
+
     async def boucle_game(self):
         while True:
             for user in self.order:
-                carte_piocher = None
-                defausse_actived = False
                 if user == self.lastturn:
                     await self.end_game()
                     break
-                while True:
-                    view = PiocheView(self.defausse, user)
-                    message = await self.channel.send(content=f"<@{user}> piochez ou choisissez la carte en defausse\n{self.show_game(user)}", view=view)
-                    await view.wait()
-
-                    if view.tag == "pioche":
-                        carte_piocher = self.cartes.pop(0)
-                        break
-                    if view.tag == "defausse":
-                        defausse_actived = True
-                        carte_piocher = self.defausse
-                        break
-                    await message.delete()
-
-                while True:
-                    view = ButtonView(self.game[user], False, not defausse_actived, user)
-                    message = await self.channel.send(content=f"<@{user}> oû souhaitez vous mettre cette carte {carte_piocher} ?", view=view)
-                    await view.wait()
-
-                    if view.value:
-                        if view.defausse:
-                            self.defausse = carte_piocher
-                            while True:
-                                view = ButtonView(self.game[user], True, False, user)
-                                message = await self.channel.send(content=f"<@{user}> choisissez la carte a retourner", view=view)
-                                await view.wait()
-
-                                if view.value == True:
-                                    self.game[user][view.y][view.x].visible = True
-                                    break
-                                message.delete()
-                            break
-                        else:
-                            self.game[user][view.y][view.x].visible = True
-                            self.defausse = self.game[user][view.y][view.x].valeur
-                            self.game[user][view.y][view.x].valeur = carte_piocher
-                            break
-                    await message.delete()
-                self.check_colone(user)
-                await self.channel.send(content=f"<@{user}>\n{self.show_game(user)}", delete_after=60)
-                if self.lastturn is None and self.check_if_last(user):
-                    self.lastturn = user
-                    await self.channel.send(content=f"# <@{user}> a revelé sa derniere carte le dernier tour commence !")
+                await self.player_turn(user)
             if self.status == "ending":
                 self.status = None
                 break

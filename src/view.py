@@ -52,6 +52,7 @@ class PiocheButton(discord.ui.Button):
             return
         await interaction.response.edit_message(content="Action confirmée", view=None, delete_after=3)
         view = self.view
+        view.value = True
         view.tag = self.tag
         view.stop()
 
@@ -72,6 +73,6 @@ class ButtonView(discord.ui.View):
 class PiocheView(discord.ui.View):
     def __init__(self, defausse, id_target):
         super().__init__()
-        self.label = None
+        self.value = False
         self.add_item(PiocheButton("Pioche", "pioche", id_target))
         self.add_item(PiocheButton(f"Defausse ({defausse})", "defausse", id_target))
