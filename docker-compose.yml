@@ -1,4 +1,6 @@
 services:
-  app:
-    image: ghcr.io/geekprod27/discord_skyjo/docker_image:main
+  bot_skyjo:
+    build:
+      dockerfile: Dockerfile
     restart: always
+    env_file: .env

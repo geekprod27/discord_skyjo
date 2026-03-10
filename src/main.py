@@ -24,7 +24,7 @@ game_status = None
 game = {}
 
 class SkyButton(discord.ui.Button):
-    def __init__(self, x: int, y: int, data, disable_if_visible: bool):
+    def __init__(self, x: int, y: int, data, disable_if_visible: bool, id_target):
         label = "X"
         if data[y][x].visible:
             label = str(data[y][x].valeur)
@@ -35,8 +35,11 @@ class SkyButton(discord.ui.Button):
             self.style = discord.ButtonStyle.green
         self.x = x
         self.y = y
+        self.user = id_target
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user:
+            return
         await interaction.response.edit_message(content="Action confirmée", view=None, delete_after=3)
         view = self.view
         view.x = self.x
@@ -45,7 +48,12 @@ class SkyButton(discord.ui.Button):
         view.stop()
 
 class DefButton(discord.ui.Button):
+    def __init__(self, id_target, label, row, style):
+         super().__init__(label=label, row=row, style=style)
+         self.user = id_target
     async def callback(self, interaction):
+        if interaction.user.id != self.user:
+            return
         await interaction.response.edit_message(content="Action confirmée", view=None, delete_after=3)
         view = self.view
         view.value = True
@@ -54,34 +62,37 @@ class DefButton(discord.ui.Button):
         
 
 class PiocheButton(discord.ui.Button):
-    def __init__(self, label: str, tag: str):
+    def __init__(self, label: str, tag: str, id_target):
         super().__init__(label=label, style=discord.ButtonStyle.blurple)
         self.tag = tag
+        self.user = id_target
 
     async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user:
+            return
         await interaction.response.edit_message(content="Action confirmée", view=None, delete_after=3)
         view = self.view
         view.tag = self.tag
         view.stop()
 
 class ButtonView(discord.ui.View):
-    def __init__(self, data, disable_if_visible, but_defausse: bool = False):
+    def __init__(self, data, disable_if_visible, but_defausse: bool, id_target):
         super().__init__()
         self.value = False
         self.defausse = False
         for x in range(4):
             for y in range(3):
                 if not data[y][x].deleted:
-                    self.add_item(SkyButton(x, y, data, disable_if_visible))
+                    self.add_item(SkyButton(x, y, data, disable_if_visible, id_target))
         if but_defausse:
-            self.add_item(DefButton(label="Défausser", row=4, style=discord.ButtonStyle.danger))
+            self.add_item(DefButton(id_target=id_target, label="Défausser", row=4, style=discord.ButtonStyle.danger))
 
 class PiocheView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, id_target):
         super().__init__()
         self.label = None
-        self.add_item(PiocheButton("Pioche", "pioche"))
-        self.add_item(PiocheButton(f"Defausse ({defausse})", "defausse"))
+        self.add_item(PiocheButton("Pioche", "pioche", id_target))
+        self.add_item(PiocheButton(f"Defausse ({defausse})", "defausse", id_target))
 
 def check_if_last(id):
     for x in range(4):
@@ -117,7 +128,7 @@ def get_max_player():
     return id
 
 def show_game(id):
-    return "\n".join(
+    return "```" + "\n".join(
     " ".join(
         f"{(
             'X' if not case.visible
@@ -127,7 +138,7 @@ def show_game(id):
         for case in ligne
     )
     for ligne in game[id]
-)
+) + "```"
 
 def check_colone(id):
     global defausse
@@ -167,7 +178,7 @@ async def end_game(channel: discord.TextChannel):
         title=f"🏆 Resultat",
         color=discord.Color.dark_gold()
     )
-    guild = await bot.fetch_guild(os.getenv("ID_SERVEUR"))
+    guild = channel.guild
     for i, (userid, score) in enumerate(top, start=1):
         user_discord = await guild.fetch_member(userid)
         embed.add_field(
@@ -189,7 +200,7 @@ async def boucle_game(order: list, channel: discord.TextChannel):
                 await end_game(channel)
                 break
             while True:
-                view = PiocheView()
+                view = PiocheView(user)
                 message = await channel.send(content=f"<@{user}> piochez ou choisissez la carte en defausse\n{show_game(user)}", view=view)
                 await view.wait()
             
@@ -203,7 +214,7 @@ async def boucle_game(order: list, channel: discord.TextChannel):
                 await message.delete()
             
             while True:
-                view = ButtonView(game[user], False, not defausse_actived)
+                view = ButtonView(game[user], False, not defausse_actived, user)
                 message = await channel.send(content=f"<@{user}> oû souhaitez vous mettre cette carte {carte_piocher} ?", view=view)
                 await view.wait()
             
@@ -211,7 +222,7 @@ async def boucle_game(order: list, channel: discord.TextChannel):
                     if view.defausse:
                         defausse = carte_piocher
                         while True:
-                            view = ButtonView(game[user], True)
+                            view = ButtonView(game[user], True, False, user)
                             message = await channel.send(content=f"<@{user}> choisissez la carte a retourner", view=view)
                             await view.wait()
                             
@@ -240,7 +251,7 @@ async def first_tour(channel: discord.TextChannel):
     global game, defausse
     for user in game:
         while True:
-            view = ButtonView(game[user], True)
+            view = ButtonView(game[user], True, False, user)
             message = await channel.send(content=f"<@{user}> choisissez votre 1ere carte", view=view)
             await view.wait()
             
@@ -250,7 +261,7 @@ async def first_tour(channel: discord.TextChannel):
             message.delete()
 
         while True:
-            view = ButtonView(game[user], True)
+            view = ButtonView(game[user], True, False, user)
             message = await channel.send(content=f"<@{user}> choisissez votre 2eme carte", view=view)
             await view.wait()
 
@@ -271,7 +282,6 @@ async def first_tour(channel: discord.TextChannel):
 @tree.command(
     name="init_game",
     description="init une game",
-    guild=discord.Object(id=os.getenv("ID_SERVEUR")),
 )
 async def init_game(interaction):
     global user_in_game, game_status, lastturn
@@ -288,7 +298,6 @@ async def init_game(interaction):
 @tree.command(
     name="join_game",
     description="join une game",
-    guild=discord.Object(id=os.getenv("ID_SERVEUR")),
 )
 async def join_game(interaction):
     global user_in_game, game_status
@@ -305,7 +314,6 @@ async def join_game(interaction):
 @tree.command(
     name="start_game",
     description="join une game",
-    guild=discord.Object(id=os.getenv("ID_SERVEUR")),
 )
 async def start_game(interaction):
     global user_in_game, game_status, game, defausse
@@ -325,7 +333,7 @@ async def start_game(interaction):
 @bot.event
 async def on_ready():
     global message
-    await tree.sync(guild=discord.Object(id=os.getenv("ID_SERVEUR")))
+    await tree.sync()
     print('Bot is ready !')
 
 if __name__ == '__main__':
