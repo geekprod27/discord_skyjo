@@ -1,7 +1,7 @@
 import random
 from view import ButtonView, PiocheView
 import discord
-
+import ia
 
 class Carte:
     def __init__(self, valeur):
@@ -61,6 +61,9 @@ class Game:
 
     async def start_game(self):
         for user in self.game:
+            if str(user).startswith("ia-"):
+                ia.first_turn(self, user)
+                continue
             view = ButtonView(self.game[user], True, False, user)
             message = await self.channel.send(content=f"<@{user}> choisissez votre 1ere carte", view=view)
             while True:
@@ -143,15 +146,27 @@ class Game:
             await self.channel.send(content=f"# <@{user}> a revelé sa derniere carte le dernier tour commence !")
 
     async def boucle_game(self):
+        turn = 1
         while True:
+            print(turn, len(self.cartes))
             for user in self.order:
                 if user == self.lastturn:
                     await self.end_game()
                     break
+
+                if len(self.cartes) == 0:
+                    await self.channel.send(content="# la pioche est vide fin de la manche !")
+                    await self.end_game()
+                    break
+
+                if str(user).startswith("ia-"):
+                    await ia.turn(self, user)
+                    continue
                 await self.player_turn(user)
             if self.status == "ending":
                 self.status = None
                 break
+            turn = turn + 1
 
     def check_colone(self, id):
         for x in range(4):
@@ -200,18 +215,24 @@ class Game:
             score_final[user] = score_f
         top = sorted(score_final.items(), key=lambda x: x[1])
         self.status = "ending"
-        if top[0][0] != self.lastturn:
-            score_final[self.lastturn] = score_final[self.lastturn] * 2
-            await self.channel.send(content=f"# <@{self.lastturn}> a terminé en premier.e mais n'a pas le meilleur score: score doublé !")
-        top = sorted(score_final.items(), key=lambda x: x[1])
+        if self.lastturn:
+            if top[0][0] != self.lastturn:
+                score_final[self.lastturn] = score_final[self.lastturn] * 2
+                await self.channel.send(content=f"# <@{self.lastturn}> a terminé en premier.e mais n'a pas le meilleur score: score doublé !")
+            top = sorted(score_final.items(), key=lambda x: x[1])
         embed = discord.Embed(
             title=f"🏆 Resultat",
             color=discord.Color.dark_gold()
         )
         for i, (userid, score) in enumerate(top, start=1):
-            user_discord = await self.channel.guild.fetch_member(userid)
+            name = ""
+            if str(userid).startswith("ia-"):
+                name = userid
+            else:
+                member = await self.channel.guild.fetch_member(userid)
+                name = member.name
             embed.add_field(
-                name=f"{i}. {user_discord.name}",
+                name=f"{i}. {name}",
                 value=f"Score : **{score}**",
                 inline=False
             )

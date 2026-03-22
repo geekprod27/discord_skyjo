@@ -15,13 +15,15 @@ games = {}
     name="init_game",
     description="init une game",
 )
-async def init_game(interaction: discord.Interaction):
+async def init_game(interaction: discord.Interaction, nb_ia: int = 0):
     global games
     await interaction.response.send_message("chargement ...")
     if interaction.channel.id in games:
         await interaction.edit_original_response(content="Une game est deja init dans ce channel")
         return
     games[interaction.channel.id] = Game(interaction.channel, interaction.user.id)
+    for ia in range(nb_ia):
+        games[interaction.channel.id].join_game("ia-" + str(ia))
     await interaction.edit_original_response(content="Game init")
 
 
